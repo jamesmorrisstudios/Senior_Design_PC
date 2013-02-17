@@ -1,0 +1,28 @@
+Detecting CXX compiler ABI info failed to compile with the following output:
+Change Dir: C:/Users/James/Dropbox/Senior_Design/PC_app/PCL/build/CMakeFiles/CMakeTmp
+
+Run Build Command:C:\PROGRA~2\MICROS~2.0\Common7\IDE\devenv.com CMAKE_TRY_COMPILE.sln /build Debug /project cmTryCompileExec2272950388
+
+Microsoft (R) Visual Studio Version 10.0.30319.1.
+Copyright (C) Microsoft Corp. All rights reserved.
+1>------ Build started: Project: cmTryCompileExec2272950388, Configuration: Debug Win32 ------
+1>Build started 1/18/2013 10:00:11 AM.
+1>PrepareForBuild:
+1>  Creating directory "C:\Users\James\Dropbox\Senior_Design\PC_app\PCL\build\CMakeFiles\CMakeTmp\Debug\".
+1>InitializeBuildStatus:
+1>  Creating "cmTryCompileExec2272950388.dir\Debug\cmTryCompileExec2272950388.unsuccessfulbuild" because "AlwaysCreate" was specified.
+1>ClCompile:
+1>  Microsoft (R) 32-bit C/C++ Optimizing Compiler Version 16.00.30319.01 for 80x86
+1>  Copyright (C) Microsoft Corporation.  All rights reserved.
+1>  
+1>  cl /c /Zi /W3 /WX- /Od /Ob0 /Oy- /D WIN32 /D _WINDOWS /D _DEBUG /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /GR /Fo"cmTryCompileExec2272950388.dir\Debug\\" /Fd"C:/Users/James/Dropbox/Senior_Design/PC_app/PCL/build/CMakeFiles/CMakeTmp/Debug/cmTryCompileExec2272950388.pdb" /Gd /TP /analyze- /errorReport:prompt "..\..\..\..\..\..\..\..\..\Program Files (x86)\CMake 2.8\share\cmake-2.8\Modules\CMakeCXXCompilerABI.cpp"  /Zm1000 
+1>  
+1>  CMakeCXXCompilerABI.cpp
+1>LINK : fatal error LNK1168: cannot open C:\Users\James\Dropbox\Senior_Design\PC_app\PCL\build\CMakeFiles\CMakeTmp\Debug\cmTryCompileExec2272950388.exe for writing
+1>
+1>Build FAILED.
+1>
+1>Time Elapsed 00:00:01.32
+========== Build: 0 succeeded, 1 failed, 0 up-to-date, 0 skipped ==========
+
+
