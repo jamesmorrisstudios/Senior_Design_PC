@@ -9,44 +9,17 @@
 * Can be opened without a connection to the scanner to load previous scans.
 *
 */
-
-//Point Cloud Library includes
-#include <pcl/io/pcd_io.h>
-#include <pcl/point_types.h>
-#include <pcl/visualization/cloud_viewer.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/surface/gp3.h>
-#include <pcl/io/vtk_io.h>
-
-//Standard includes
-#include <iostream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <windows.h>
-#include <math.h>
-
-//hidapi for USB communication
-#include "hidapi.h"
-
-//Application defines
-#define BUFSIZE 64			//number of bytes in a USB packet
-#define PACKETSIZE 2		//number of bytes for each application level data packet
-#define MAXHEIGHT 480		//max height of a scan
-#define MAXROTATION 180		//max rotational steps of a scan
-
-#define CMDSTART 64			//b'0100 0000
-#define CMDEND 128			//b'1000 0000
-#define CMDDATA 0			//b'0000 0000
-#define CMDBLANK 192		//b'1100 0000
-#define CMDMASK 192			//b'1100 0000
-
-#define STATE_SCAN_START 0	//
-#define STATE_SCAN_RUN 1	//
-#define STATE_SCAN_END 2	//
+#include "3D-Thinking-PC.h"
 
 //Global variables
 hid_device *handle; //hid connection handle
+
+//Step mode is 1 for full step
+//2 for half step
+//4 for quarter step
+//8 for eighth step
+//16 for sixteenth step
+unsigned int stepMode = 2;
 
 //USB transmission buffers, RawHID supports a max size of 64 bytes
 //bufOut must have an extra byte that is used as a control byte for USB RawHID
@@ -55,23 +28,10 @@ hid_device *handle; //hid connection handle
 unsigned char bufOut[BUFSIZE+1] = {0};
 unsigned char bufIn[BUFSIZE] = {0};
 
-//Function definitions
-void savePCD(pcl::PointCloud<pcl::PointXYZ>& cloud_data);
-void exportVTK(pcl::PointCloud<pcl::PointXYZ>& cloud_data);
-void addCloudData(pcl::PointCloud<pcl::PointXYZ>& cloud, int hor, int vert, int distance, int curPoint);
-void setupCloud(pcl::PointCloud<pcl::PointXYZ>& cloud_data);
-char* timeStamp(char* txt);
-void displayCloud(pcl::PointCloud<pcl::PointXYZ>& cloud_data);
-void startScan();
-void openFile();
-int connectRawHid(int pause);
-void displayHIDDetails();
-void disconnectRawHid();
-
 /*
 * Saves the point cloud in the native file format timestamped to the current time
 */
-void savePCD(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
+void savePCD(pcl::PointCloud<pcl::PointXYZRGB>& cloud_data){
 	char times[40] = "scan-";
 	//Save it to a file
 	pcl::io::savePCDFileASCII (timeStamp(times), cloud_data);
@@ -81,13 +41,14 @@ void savePCD(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
 * Exports the given point cloud as a mesh after calculating a mesh to fit the points
 * TODO, this is very experimental and not supported
 */
-void exportVTK(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_post (new pcl::PointCloud<pcl::PointXYZ>);
+/*
+void exportVTK(pcl::PointCloud<pcl::PointXYZRGB>& cloud_data){
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_post (new pcl::PointCloud<pcl::PointXYZRGB>);
 	*cloud_post = cloud_data;
 	
-	pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> n;
+	pcl::NormalEstimation<pcl::PointXYZRGB, pcl::Normal> n;
 	pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
-	pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+	pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
 	tree->setInputCloud (cloud_post);
 	n.setInputCloud (cloud_post);
 	n.setSearchMethod (tree);
@@ -130,31 +91,42 @@ void exportVTK(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
 	//save the file as a .vtk
 	pcl::io::saveVTKFile ("mesh.vtk", triangles);
 }
-
+*/
 /*
 * Converts the given scan data into rectangular coordinates and adds it to the point cloud
 */
-void addCloudData(pcl::PointCloud<pcl::PointXYZ>& cloud, int hor, int vert, int distance, int curPoint){
+
+/*
+*
+*/
+void addCloudData(pcl::PointCloud<pcl::PointXYZRGB>& cloud, int hor, int vert, float distance, int curPoint, int red, int green, int blue){
 	//hor ranges 0 -> 179 and is a 90 degree swing so 45 left and right of center
 	//vert ranges from 0 -> 479 and is a 90 degree swing
 	//distance is in mm or 10 for each 1 unit here
-	float rho = distance / 10; //TODO distance needs to be calibrated based on output from FPGA
-	float phi = vert / 5.3 + 45;
-	float theta = hor / 2.0;
+	float rho = distance;
+	float phi = vert * 34.5 / 720.0 + 72.75;
+	float theta = hor * 90.0 / 200.0;
 
 	cloud.points[curPoint].z = rho * sin(phi*M_PI/180) * cos(theta*M_PI/180);
 	cloud.points[curPoint].x = rho * sin(phi*M_PI/180) * sin(theta*M_PI/180);
 	cloud.points[curPoint].y = rho * cos(phi*M_PI/180);
+	cloud.points[curPoint].r = red;
+	cloud.points[curPoint].g = green;
+	cloud.points[curPoint].b = blue;
+
+	//printf("hor %d vert %d distance %f rho %f phi %f theta %f X %f Y %f Z %f \n",hor, vert, distance, rho, phi, theta, cloud.points[curPoint].x, cloud.points[curPoint].y, cloud.points[curPoint].z);
+
+	//printf("Added point R:%d G:%d B:%d\n", red, green, blue);
 }
 
 /*
 * Configures the cloud data size to match the incoming data set
 */
-void setupCloud(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
-	cloud_data.width    = 180;
-	cloud_data.height   = 480;
+void setupCloud(pcl::PointCloud<pcl::PointXYZRGB>& cloud_data){
+	cloud_data.width    = (stepMode * STEPPER_BASE_STEPS);
+	cloud_data.height   = CAMERA_HEIGHT;
 	cloud_data.is_dense = false;
-	cloud_data.points.resize (cloud_data.width * cloud_data.height);
+	cloud_data.points.resize ((stepMode * STEPPER_BASE_STEPS) * cloud_data.height);
 }
 
 /*
@@ -185,99 +157,185 @@ char* timeStamp(char* txt){
 * Displays the given point cloud data
 * Blocks until the user closes the point cloud display window
 */
-void displayCloud(pcl::PointCloud<pcl::PointXYZ>& cloud_data){
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_post (new pcl::PointCloud<pcl::PointXYZ>);
+void displayCloud(pcl::PointCloud<pcl::PointXYZRGB>& cloud_data){
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_post (new pcl::PointCloud<pcl::PointXYZRGB>);
 	*cloud_post = cloud_data;
 	//Show the visualizer of the cloud
-	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("Three Dimensional Thinking"));
-	//viewer->addCoordinateSystem (10.0);
+
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+	viewer->setBackgroundColor (0, 0, 0);
+	pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb(cloud_post);
+	viewer->addPointCloud<pcl::PointXYZRGB> (cloud_post, rgb, "sample cloud");
+	viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+	viewer->addCoordinateSystem (10.0);
 	viewer->initCameraParameters ();
-	viewer->addPointCloud<pcl::PointXYZ> (cloud_post, "Scan Data");
-	//Block the program while the scan window is open
+
+	viewer->setCameraPosition(-50,0,-50,1,1,1);
+
 	while (!viewer->wasStopped ())
 	{
 		viewer->spinOnce (100);
 	}
 }
 
-/*
-* Initiates and completes a scan
-* Saves the scan data to a file and displays it to the user
-* Blocks until the user closes the viewer window
-*/
 void startScan(){
+	//Current stepper motor step location
+	unsigned int currentStep = stepMode / 2 * STEPPER_BASE_STEPS;
+	//Counter for the point cloud point
+	int currentPoint = 0;
+	//To access as 2D array one needs to address like the following scanData[i*4+j]
+	float *scanData = new float[720*4];
+	
 	//Create the point cloud object
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 	//init to default size
 	setupCloud(*cloud);
-    //reset scan varibles
-	unsigned int state = STATE_SCAN_START;
-	unsigned int rotation = 0;
-	unsigned int height = 0;
-	unsigned char cmd;
-	unsigned int range;
-	unsigned int curPoint = 0;
-	int i;
-	int res;
+	//step_mode (full, half, etc)
+	step_mode(stepMode);
+	//Wake the stepper motor
+	step_wake();
+	//rotate stepper left till currentStep == 0 (scan start position)
+	//printf("Rotating left 45 degrees to start scan\n");
+	while(currentStep > 0){
+		step_left();
+		currentStep--;
+		Sleep(STEP_DELAY_FAST);
+	}
+	//create dummy data for the depth and colors
+		for(int j=0;j<720;j++){
+			//scanData[j*4+0] = 100 / cos( (i - 100) / 200.0 * M_PI/180.0 * 90.0 ) / cos((j-360) * 34.5 / 720.0 *M_PI/180);
 
-	//continue looping until the scan is complete
-	while(state != STATE_SCAN_END){
-		if(state == STATE_SCAN_START){
-			//The first byte out must be 0, see the declaration of bufOut for more detail
-			bufOut[0] = 0;
-			bufOut[1] = CMDSTART;
-			//Command byte to start scan
-			if(hid_write(handle, bufOut, sizeof(bufOut)) <= 0){
-				printf("Scanner disconnected. . . Plug it in and restart the scan.\n");
-				system("pause");
-				return;
-			}
-			state = STATE_SCAN_RUN;
-		}else if (state == STATE_SCAN_RUN){
-			//Reads an input from the uC, will block until a packet is recieved
-			if(hid_read(handle, bufIn, sizeof(bufIn)) <= 0){
-				printf("Scanner disconnected. . . Plug it in and restart the scan.\n");
-				system("pause");
-				return;
-			}
-			//check the upper 2 bits of the first byte for a command
-			if((bufIn[0] & CMDMASK) == CMDSTART){
-				//do nothing this is expected as the first byte
-				//There is currently no reset ability built in so this is ignored
-			}else if((bufIn[0] & CMDMASK) == CMDEND){
-				//Ends the scan
-				state = STATE_SCAN_END;
-			}else if ((bufIn[0] & CMDMASK) == CMDDATA){
-				//Start and End commands are always in the first block of a HID packet
-				//The only check needed when looping over a HID packet is to see if they have data or are blank
-				//HID packet
-				//Loop over all the data packets in the USB packet
-				for(i=0;i<BUFSIZE/PACKETSIZE;i++){
-					if((bufIn[0+i*PACKETSIZE] & CMDMASK) == CMDDATA){
-						//Take the range from the 2 data packet bytes
-						range = bufIn[1+i*PACKETSIZE] + ((bufIn[0+i*PACKETSIZE] & 15) << 8);
-						//Add the cloud data point
-						addCloudData(*cloud, rotation, height, range, curPoint);
-						curPoint++;
-						//Walk through all the height and rotational limits
-						//This assumes data will be recieved in a specific order.
-						//Height from 0-MAXHEIGHT at the far left rotation and then repeat
-						//stepping the rotation to the right and walking the height from 0-MAXHEIGHT
-						height++;
-						if(height == MAXHEIGHT){
-							rotation++;
-							height = 0;
-						}
-					}
-				}//for
-			}//cmd check
-		}//state check
-	}//while
+			scanData[j*4+1] = 255; //RED
+			scanData[j*4+2] = 255; //GREEN
+			scanData[j*4+3] = 255; //BLUE
+		}
+	//printf("Begin loop\n");
 
+	//Prep for scan start
+	laser_on();
+	Sleep(STEP_DELAY_SLOW);
+	//
+	//Loop over every step in the current mode
+	//
+	for(int i=0;i<stepMode * STEPPER_BASE_STEPS; i++){
+		
+		//printf("value %f where i is %d \n",  ( cos( (i - 100) / 200.0 * M_PI/180.0 * 90.0 ) ), i );
+		//Take a picture (with laser)
+		takePictureLaser();
+		if(i==0){
+			takePictureLaser();
+		}
+		//turn the laser off
+		laser_off();
+		Sleep(STEP_DELAY_SLOW);
+		//Take a picture (base image)
+		
+		takePictureBase();
+		if(i==0){
+			takePictureBase();
+		}
+		//turn laser on
+		laser_on();
+		//Rotate stepper motor
+		step_right();
+		currentStep++;
+		//Send pictures to analysis and get back the depth and color data
+		//printf("hand off data");
+		analyzeData(scanData);
+		//printf("image processing complete");
+		//Add the data to the cloud
+		//scanData[i*4+j]
+		for(int j=0;j<CAMERA_HEIGHT;j++){
+			addCloudData(*cloud, currentStep, j, scanData[j*4+0], currentPoint, scanData[j*4+1], scanData[j*4+2], scanData[j*4+3]);
+			currentPoint++;
+		}
+		//Sleep(STEP_DELAY_SLOW);
+	//	printf("loop %d\n", i);
+	}
+
+	//laser off
+	laser_off();
+	//printf("Rotating left 45 degrees to origin\n");
+	while(currentStep > stepMode / 2 * STEPPER_BASE_STEPS){
+		step_left();
+		currentStep--;
+		Sleep(STEP_DELAY_FAST);
+	}
+	//send step sleep command
+	step_sleep();
 	//Save the scan to a file and then display it to the user
 	savePCD(*cloud);
 	//blocks until the user closes the window
 	displayCloud(*cloud);
+	//cleanup
+	delete [] scanData;
+//	printf("scan complete\n");
+}
+
+/*
+* Sends the given command value and waits for an ack
+* from the uC
+* returns true if ack and false if NACK or timeout
+*/
+bool sendCommand(int cmd){
+	
+	bufOut[0] = 0;
+	bufOut[1] = cmd;
+	//Command byte to start scan
+	if(hid_write(handle, bufOut, sizeof(bufOut)) <= 0){
+		printf("Scanner disconnected. . . Plug it in and restart the scan.\n");
+		system("pause");
+		return false;
+	}
+	
+	return true;
+}
+
+bool step_left(){
+	return sendCommand(PC_STEP_LEFT);
+}
+
+bool step_right(){
+	return sendCommand(PC_STEP_RIGHT);
+}
+
+bool step_sleep(){
+	return sendCommand(PC_STEP_SLEEP);
+}
+
+bool step_wake(){
+	return sendCommand(PC_STEP_WAKE);
+}
+
+bool step_mode(unsigned int mode){
+	if(mode == 1){
+		return sendCommand(PC_STEP_MODE_FULL);
+	}else if(mode == 2){
+		return sendCommand(PC_STEP_MODE_HALF);
+	}else if(mode == 4){
+		return sendCommand(PC_STEP_MODE_QUARTER);
+	}else if(mode == 8){
+		return sendCommand(PC_STEP_MODE_EIGHTH);
+	}else if(mode == 16){
+		return sendCommand(PC_STEP_MODE_SIXTEENTH);
+	}
+	return false;
+}
+
+bool laser_on(){
+	return sendCommand(PC_LASER_ON);
+}
+
+bool laser_off(){
+	return sendCommand(PC_LASER_OFF);
+}
+
+bool send_ACK(){
+	return sendCommand(PC_ACK);
+}
+
+bool send_NACK(){
+	return sendCommand(PC_NACK);
 }
 
 /*
@@ -286,7 +344,7 @@ void startScan(){
 */
 void openFile(){
 	//Create the point cloud object
-	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 	
 	std::string filename;
 	//Wait for the user to enter a valid filename
@@ -295,7 +353,7 @@ void openFile(){
 		std::cout << "\n\nEnter the filename\n" ;
 		std::cin >> filename ;
 		//attempt to load the given file
-		if (pcl::io::loadPCDFile<pcl::PointXYZ> (filename, *cloud) == -1)
+		if (pcl::io::loadPCDFile<pcl::PointXYZRGB> (filename, *cloud) == -1)
 		{
 			//If opening failed print error and restart loop
 			std::cout << "ERROR: file could not be opened\n" ;
@@ -303,7 +361,53 @@ void openFile(){
 			//Display the cloud then break from the loop
 			//after the user closes the display window
 			std::cout << "Opening file...\n" ;
-			displayCloud(*cloud);
+
+			// Create a KD-Tree
+		  pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
+
+		  // Output has the PointNormal type in order to store the normals calculated by MLS
+		  pcl::PointCloud<pcl::PointNormal> mls_points;
+
+		  // Init object (second point type is for the normals, even if unused)
+		  pcl::MovingLeastSquares<pcl::PointXYZRGB, pcl::PointNormal> mls;
+ 
+		  mls.setComputeNormals (true);
+
+		  // Set parameters
+		  mls.setInputCloud (cloud);
+		  mls.setPolynomialFit (true);
+		  mls.setSearchMethod (tree);
+		  mls.setSearchRadius (0.03);
+
+		  // Reconstruct
+		  mls.process (mls_points);
+
+		  pcl::io::savePCDFile ("bun0-mls.pcd", mls_points);
+		  /*
+
+		  boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Viewer"));
+		  viewer->setBackgroundColor (0, 0, 0);
+
+			//pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointNormal>(mls_points);
+		//	
+			viewer->addPointCloud<pcl::PointNormal> (mls_points, "sample cloud");
+			
+			viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 3, "sample cloud");
+			viewer->addCoordinateSystem (10.0);
+			viewer->initCameraParameters ();
+
+			viewer->setCameraPosition(-50,0,-50,1,1,1);
+
+			while (!viewer->wasStopped ())
+			{
+				viewer->spinOnce (100);
+			}
+
+
+			*/
+
+
+			//displayCloud(mls_points);
 			break;
 		}
 	}
@@ -323,6 +427,7 @@ int connectRawHid(int pause){
 		}
  		return -1;
 	}
+	return 0;
 }
 
 /*
@@ -356,7 +461,6 @@ void displayHIDDetails(){
 	printf("\n");
 }
 
-
 /*
 * Disconnects from the currently connected USB RawHID device
 */
@@ -379,6 +483,7 @@ int main(int argc, char* argv[])
 		displayHIDDetails();
 		disconnectRawHid();
 	}
+	cameraInit();
 	while(true){
 		std::cout << "\n\nThree Dimensional Thinking\n\n1: New Scan \n2: Open file\n3: Close Program\n" ;
 		std::size_t Number ;
@@ -397,7 +502,25 @@ int main(int argc, char* argv[])
 		} else if ( Number == 3) {
 			//Closes the application
 			break;
-		}
+		}else if ( Number == 4) {
+			connectRawHid(0);
+			laser_on();
+			disconnectRawHid();
+		}else if ( Number == 5) {
+			connectRawHid(0);
+			laser_off();
+			disconnectRawHid();
+		}else if ( Number == 6) {
+			/*
+			connectCamera();
+			unsigned char * frameBuffer = new unsigned char[cameraSize];
+			cv::Mat frame;
+			frame = take_picture(frameBuffer);
+			IplImage ipl_img = frame;
+			cvSaveImage("./imageTest.jpg", &ipl_img);
+			disconnectCamera()
+			*/
+		}	
 	}
 	return 0;
 }

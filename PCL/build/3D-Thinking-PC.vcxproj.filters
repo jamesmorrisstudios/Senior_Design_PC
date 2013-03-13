@@ -4,6 +4,9 @@
     <ClCompile Include="..\3D-Thinking-PC.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\Triangulation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\Cmakelists.txt" />
@@ -12,5 +15,13 @@
     <Filter Include="Source Files">
       <UniqueIdentifier>{BC4E2368-9DFD-4DCC-B563-1872268C2BDB}</UniqueIdentifier>
     </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Triangulation.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\3D-Thinking-PC.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
